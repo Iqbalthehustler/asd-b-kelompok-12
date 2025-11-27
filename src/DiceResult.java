@@ -19,7 +19,6 @@ public class DiceResult {
         return !isGreen;
     }
 
-    // Method baru: cek apakah angka dadu kelipatan 5
     public boolean isMultipleOfFive() {
         return number % 5 == 0;
     }
