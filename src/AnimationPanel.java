@@ -3,7 +3,6 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
-
 class AnimationPanel extends JPanel {
     private Timer animationTimer;
     private int currentStep;
@@ -12,13 +11,13 @@ class AnimationPanel extends JPanel {
     private int endPosition;
     private Player animatedPlayer;
     private Runnable onAnimationComplete;
-    private int animationSpeed;
-    private int baseSpeed = 100;
+
+    // Kecepatan tetap (Normal)
+    private final int ANIMATION_SPEED = 80;
 
     public AnimationPanel() {
         setOpaque(false);
-        this.animationSpeed = baseSpeed;
-        animationTimer = new Timer(animationSpeed, new AnimationListener());
+        animationTimer = new Timer(ANIMATION_SPEED, new AnimationListener());
     }
 
     public void animateMovement(Player player, int startPos, int endPos, Runnable onComplete) {
@@ -29,52 +28,7 @@ class AnimationPanel extends JPanel {
         this.currentStep = 0;
         this.totalSteps = Math.min(20, Math.abs(endPos - startPos) * 2);
 
-        animationTimer.setDelay(animationSpeed);
         animationTimer.start();
-    }
-
-    public void setAnimationSpeed(int speed) {
-        this.animationSpeed = speed;
-        if (animationTimer.isRunning()) {
-            animationTimer.setDelay(animationSpeed);
-        }
-    }
-
-    public void increaseSpeed() {
-        if (animationSpeed > 20) {
-            animationSpeed -= 20;
-            if (animationTimer.isRunning()) {
-                animationTimer.setDelay(animationSpeed);
-            }
-        }
-    }
-
-    public void decreaseSpeed() {
-        if (animationSpeed < 500) {
-            animationSpeed += 20;
-            if (animationTimer.isRunning()) {
-                animationTimer.setDelay(animationSpeed);
-            }
-        }
-    }
-
-    public void resetSpeed() {
-        this.animationSpeed = baseSpeed;
-        if (animationTimer.isRunning()) {
-            animationTimer.setDelay(animationSpeed);
-        }
-    }
-
-    public int getAnimationSpeed() {
-        return animationSpeed;
-    }
-
-    public String getSpeedLabel() {
-        if (animationSpeed <= 40) return "Sangat Cepat";
-        if (animationSpeed <= 80) return "Cepat";
-        if (animationSpeed <= 120) return "Normal";
-        if (animationSpeed <= 200) return "Lambat";
-        return "Sangat Lambat";
     }
 
     private class AnimationListener implements ActionListener {

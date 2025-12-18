@@ -1,121 +1,116 @@
 import javax.sound.sampled.*;
-import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.io.File;
+import java.io.IOException;
 
 public class SoundManager {
-    private Map<String, Clip> soundClips;
-    private boolean soundEnabled;
+    // --- Daftar File Suara ---
+    // Pastikan 4 file ini ada di folder proyek (sejajar dengan folder src atau bin)
+    private final String BGM_SETUP = "Opening.wav";
+    private final String BGM_INGAME = "Backsound.wav";
+    private final String SFX_DICE = "Dadu.WAV";
+    private final String SFX_WIN = "Yippie.WAV";
+
+    // --- Pengaturan Volume (Desibel) ---
+    private static final float VOL_BGM = -10.0f; // Musik latar agak pelan
+    private static final float VOL_SFX = 0.0f;   // Efek suara normal
+
+    private Clip currentBgmClip; // Menyimpan musik latar yang sedang aktif
 
     public SoundManager() {
-        soundClips = new HashMap<>();
-        soundEnabled = true;
-        loadSounds();
     }
 
-    private void loadSounds() {
+    // --- Helper: Load File Audio ---
+    private Clip loadClip(String filePath) {
         try {
-            // Load default sounds (akan diganti dengan file audio Anda)
-            loadSound("dice_roll", "sounds/dice_roll.wav");
-            loadSound("player_move", "sounds/player_move.wav");
-            loadSound("power_up", "sounds/power_up.wav");
-            loadSound("special_node", "sounds/special_node.wav");
-            loadSound("win", "sounds/win.wav");
-        } catch (Exception e) {
-            System.out.println("Warning: Could not load sound files. Using fallback sounds.");
-            createFallbackSounds();
-        }
-    }
-
-    private void loadSound(String name, String filePath) {
-        try {
-            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(
-                    new File(filePath));
-            Clip clip = AudioSystem.getClip();
-            clip.open(audioInputStream);
-            soundClips.put(name, clip);
-        } catch (Exception e) {
-            System.out.println("Could not load sound: " + filePath);
-        }
-    }
-
-    private void createFallbackSounds() {
-        // Create simple beep sounds as fallback
-        try {
-            soundClips.put("dice_roll", createBeepClip(400, 100));
-            soundClips.put("player_move", createBeepClip(300, 50));
-            soundClips.put("power_up", createBeepClip(600, 200));
-            soundClips.put("special_node", createBeepClip(800, 150));
-            soundClips.put("win", createBeepClip(1000, 500));
-        } catch (Exception e) {
-            System.out.println("Could not create fallback sounds");
-        }
-    }
-
-    private Clip createBeepClip(int frequency, int duration) throws LineUnavailableException {
-        Clip clip = AudioSystem.getClip();
-        AudioFormat audioFormat = new AudioFormat(44100, 8, 1, true, false);
-        byte[] buffer = new byte[44100 * duration / 1000];
-
-        for (int i = 0; i < buffer.length; i++) {
-            double angle = i / (44100.0 / frequency) * 2.0 * Math.PI;
-            buffer[i] = (byte)(Math.sin(angle) * 127.0);
-        }
-
-        ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
-        AudioInputStream audioInputStream = new AudioInputStream(bais, audioFormat, buffer.length);
-        clip.open(audioInputStream);
-        return clip;
-    }
-
-    public void playSound(String soundName) {
-        if (!soundEnabled) return;
-
-        Clip clip = soundClips.get(soundName);
-        if (clip != null) {
-            // Stop sound jika sedang diputar
-            if (clip.isRunning()) {
-                clip.stop();
+            File audioFile = new File(filePath);
+            if (!audioFile.exists()) {
+                System.err.println("❌ File audio tidak ditemukan: " + filePath);
+                return null;
             }
-            // Reset ke awal
+            AudioInputStream audioStream = AudioSystem.getAudioInputStream(audioFile);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioStream);
+            return clip;
+        } catch (Exception e) {
+            System.err.println("❌ Error memuat audio " + filePath + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    // --- Helper: Set Volume ---
+    private void setVolume(Clip clip, float volumeDb) {
+        if (clip == null) return;
+        try {
+            FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+            float max = gainControl.getMaximum();
+            float min = gainControl.getMinimum();
+
+            // Batasi agar tidak error
+            if (volumeDb > max) volumeDb = max;
+            if (volumeDb < min) volumeDb = min;
+
+            gainControl.setValue(volumeDb);
+        } catch (IllegalArgumentException e) {
+            // Kontrol volume tidak didukung sistem
+        }
+    }
+
+    // --- Logika BGM (Looping) ---
+
+    // 1. Musik saat Setup Pemain
+    public void playSetupMusic() {
+        playBgm(BGM_SETUP);
+    }
+
+    // 2. Musik saat Game Berlangsung
+    public void playInGameMusic() {
+        playBgm(BGM_INGAME);
+    }
+
+    private void playBgm(String filePath) {
+        stopBgm(); // Matikan musik sebelumnya jika ada
+
+        currentBgmClip = loadClip(filePath);
+        if (currentBgmClip != null) {
+            setVolume(currentBgmClip, VOL_BGM);
+            currentBgmClip.setFramePosition(0);
+            currentBgmClip.loop(Clip.LOOP_CONTINUOUSLY); // Ulang terus
+            currentBgmClip.start();
+        }
+    }
+
+    public void stopBgm() {
+        if (currentBgmClip != null) {
+            if (currentBgmClip.isRunning()) currentBgmClip.stop();
+            currentBgmClip.close();
+            currentBgmClip = null;
+        }
+    }
+
+    // --- Logika SFX (Sekali Main) ---
+
+    public void playDiceRoll() {
+        playSoundEffect(SFX_DICE);
+    }
+
+    public void playWinSound() {
+        stopBgm(); // Matikan musik latar agar suara menang terdengar jelas
+        playSoundEffect(SFX_WIN);
+    }
+
+    private void playSoundEffect(String filePath) {
+        Clip clip = loadClip(filePath);
+        if (clip != null) {
+            setVolume(clip, VOL_SFX);
             clip.setFramePosition(0);
             clip.start();
-        }
-    }
 
-    public void playSoundLoop(String soundName, int loopCount) {
-        if (!soundEnabled) return;
-
-        Clip clip = soundClips.get(soundName);
-        if (clip != null) {
-            if (clip.isRunning()) {
-                clip.stop();
-            }
-            clip.setFramePosition(0);
-            clip.loop(loopCount);
-        }
-    }
-
-    public void stopSound(String soundName) {
-        Clip clip = soundClips.get(soundName);
-        if (clip != null && clip.isRunning()) {
-            clip.stop();
-        }
-    }
-
-    public void setSoundEnabled(boolean enabled) {
-        this.soundEnabled = enabled;
-        if (!enabled) {
-            // Stop semua sound yang sedang diputar
-            for (Clip clip : soundClips.values()) {
-                if (clip.isRunning()) {
-                    clip.stop();
+            // Hapus clip dari memori setelah selesai main
+            clip.addLineListener(event -> {
+                if (event.getType() == LineEvent.Type.STOP) {
+                    clip.close();
                 }
-            }
+            });
         }
-    }
-
-    public boolean isSoundEnabled() {
-        return soundEnabled;
     }
 }

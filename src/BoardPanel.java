@@ -1,567 +1,344 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.List;
 
 public class BoardPanel extends JPanel {
-    private static final int BOARD_SIZE = 10;
-    private static final int SQUARE_SIZE = 60;
-    private Map<Integer, Point> squarePositions;
-    private Map<Integer, List<Integer>> graph;
+    public static final int TOTAL_STEPS = 25;
+    private Point[] path;
+    private Map<Integer, Integer> starScores;
+    private Set<Integer> specialNodes;
+    private Map<Integer, List<Integer>> specialGraph;
+
     private Player[] players;
-    private String statusMessage;
-    private AnimationPanel animationPanel;
-    private Set<Integer> specialNodes; // Node khusus (5 titik hijau)
-    private Map<Integer, List<Integer>> specialGraph; // Graph khusus untuk node hijau
-    private ControlPanel controlPanel; // Reference ke control panel
-    private Set<Integer> primeNumbers; // Set untuk angka prima
+    private String statusMsg = "Ant Adventure Begins!";
+    private AnimationPanel animPanel;
+    private ControlPanel ctrlPanel;
+
+    // --- Caching untuk Performa ---
+    // Kita menggambar background berat (rumput/tanah) ke gambar ini sekali saja
+    private BufferedImage backgroundCache;
+    private int lastWidth = -1, lastHeight = -1;
+
+    // Aset Dekorasi
+    private List<Point> rocks;
+    private List<Point> roots;
 
     public BoardPanel() {
-        this.squarePositions = new HashMap<>();
-        this.graph = new HashMap<>();
-        this.specialNodes = new HashSet<>();
-        this.specialGraph = new HashMap<>();
-        this.primeNumbers = new HashSet<>();
-        this.statusMessage = "Game dimulai!";
-        this.animationPanel = new AnimationPanel();
-
         setLayout(new OverlayLayout(this));
-        add(animationPanel);
+        animPanel = new AnimationPanel();
+        add(animPanel);
 
-        initializeSquarePositions();
-        initializeGraph();
-        initializePrimeNumbers(); // Initialize angka prima
-        generateFullyConnectedSpecialNodes();
-        setPreferredSize(new Dimension(BOARD_SIZE * SQUARE_SIZE + 50, BOARD_SIZE * SQUARE_SIZE + 80));
-        setBackground(new Color(240, 240, 240));
-        setBorder(BorderFactory.createTitledBorder("Papan Ular Tangga 10x10"));
+        starScores = new HashMap<>();
+        specialNodes = new HashSet<>();
+        specialGraph = new HashMap<>();
+        rocks = new ArrayList<>();
+        roots = new ArrayList<>();
+
+        initPath25();
+        generateContent();
+        setPreferredSize(new Dimension(800, 600)); // Resolusi sedikit dinaikkan
     }
 
-    // Method untuk initialize angka prima
-    private void initializePrimeNumbers() {
-        // Angka prima antara 1-100
-        int[] primes = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47,
-                53, 59, 61, 67, 71, 73, 79, 83, 89, 97};
-        for (int prime : primes) {
-            primeNumbers.add(prime);
+    public void setControlPanel(ControlPanel cp) { this.ctrlPanel = cp; }
+    public void setPlayers(Player[] p) { this.players = p; }
+    public void setStatusMessage(String m) { this.statusMsg = m; repaint(); }
+
+    private void initPath25() {
+        path = new Point[TOTAL_STEPS + 1];
+        // Koordinat manual
+        path[0] = new Point(60, 550);
+        path[1] = new Point(160, 570);
+        path[2] = new Point(260, 550);
+        path[3] = new Point(360, 570);
+        path[4] = new Point(460, 550);
+        path[5] = new Point(560, 520);
+
+        path[6] = new Point(620, 450);
+        path[7] = new Point(520, 420);
+        path[8] = new Point(420, 450);
+        path[9] = new Point(320, 420);
+        path[10] = new Point(220, 450);
+        path[11] = new Point(120, 420);
+
+        path[12] = new Point(80, 320);
+        path[13] = new Point(180, 290);
+        path[14] = new Point(280, 320);
+        path[15] = new Point(380, 290);
+        path[16] = new Point(480, 320);
+        path[17] = new Point(580, 280);
+
+        path[18] = new Point(620, 200);
+        path[19] = new Point(520, 170);
+        path[20] = new Point(420, 200);
+        path[21] = new Point(320, 170);
+        path[22] = new Point(220, 150);
+
+        path[23] = new Point(130, 110); // Dekat permukaan
+        path[24] = new Point(220, 75);  // Di Rumput
+        path[25] = new Point(400, 50);  // Di Langit (Finish)
+    }
+
+    public void generateContent() {
+        Random r = new Random();
+        starScores.clear();
+        for(int i=1; i<TOTAL_STEPS; i++) {
+            if(r.nextBoolean()) starScores.put(i, (r.nextInt(5)+1)*10);
         }
-    }
-
-    // Method untuk cek apakah angka prima
-    public boolean isPrimeNumber(int number) {
-        return primeNumbers.contains(number);
-    }
-
-    // Method untuk set control panel reference
-    public void setControlPanel(ControlPanel controlPanel) {
-        this.controlPanel = controlPanel;
-    }
-
-    // Method untuk initialize posisi kotak
-    private void initializeSquarePositions() {
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                int position = calculatePosition(row, col);
-                int x = col * SQUARE_SIZE + 25;
-                int y = row * SQUARE_SIZE + 25;
-                squarePositions.put(position, new Point(x, y));
-            }
-        }
-    }
-
-    private int calculatePosition(int row, int col) {
-        if (row % 2 == 0) {
-            return (BOARD_SIZE - row) * BOARD_SIZE - col;
-        } else {
-            return (BOARD_SIZE - row - 1) * BOARD_SIZE + col + 1;
-        }
-    }
-
-    // Method untuk initialize graph
-    private void initializeGraph() {
-        for (int i = 1; i <= 100; i++) {
-            graph.put(i, new ArrayList<>());
-        }
-
-        for (int i = 1; i <= 100; i++) {
-            for (int j = 1; j <= 6; j++) {
-                int nextPos = i + j;
-                if (nextPos <= 100) {
-                    graph.get(i).add(nextPos);
-                }
-            }
-        }
-
-        for (int i = 1; i <= 100; i++) {
-            for (int j = 1; j <= 6; j++) {
-                int prevPos = i - j;
-                if (prevPos >= 1) {
-                    graph.get(i).add(prevPos);
-                }
-            }
-        }
-    }
-
-    // Method untuk generate 5 node khusus yang FULLY CONNECTED
-    private void generateFullyConnectedSpecialNodes() {
-        Random random = new Random();
         specialNodes.clear();
         specialGraph.clear();
+        while(specialNodes.size() < 3) specialNodes.add(r.nextInt(TOTAL_STEPS-4)+2);
 
-        // Generate 5 posisi unik antara 10-90 (hindari area start/finish yang terlalu dekat)
-        while (specialNodes.size() < 5) {
-            int node = random.nextInt(81) + 10; // 10-90
-            // Pastikan node tidak terlalu berdekatan (minimal jarak 5)
-            boolean tooClose = false;
-            for (int existingNode : specialNodes) {
-                if (Math.abs(existingNode - node) < 8) {
-                    tooClose = true;
-                    break;
-                }
-            }
-            if (!tooClose) {
-                specialNodes.add(node);
-            }
+        List<Integer> nodes = new ArrayList<>(specialNodes);
+        for(Integer n : nodes) {
+            List<Integer> neighbors = new ArrayList<>(nodes);
+            neighbors.remove(n);
+            specialGraph.put(n, neighbors);
         }
 
-        // Konversi ke list untuk memudahkan
-        List<Integer> nodeList = new ArrayList<>(specialNodes);
-        Collections.sort(nodeList); // Urutkan untuk konsistensi
+        // Generate Posisi Dekorasi Batu & Akar
+        rocks.clear();
+        roots.clear();
+        for(int i=0; i<20; i++) rocks.add(new Point(r.nextInt(750), r.nextInt(400) + 150));
+        for(int i=0; i<12; i++) roots.add(new Point(r.nextInt(750), 110));
 
-        // Buat graph FULLY CONNECTED: setiap node terhubung ke SEMUA node lain
-        for (int i = 0; i < nodeList.size(); i++) {
-            int currentNode = nodeList.get(i);
-            specialGraph.put(currentNode, new ArrayList<>());
-
-            // Hubungkan ke SEMUA node lain
-            for (int j = 0; j < nodeList.size(); j++) {
-                if (i != j) { // Jangan hubungkan ke diri sendiri
-                    int otherNode = nodeList.get(j);
-                    specialGraph.get(currentNode).add(otherNode);
-                }
-            }
-        }
-
-        // Print debug info
-        System.out.println("=== FULLY CONNECTED SPECIAL NODES ===");
-        for (int node : nodeList) {
-            System.out.println("Node " + node + " -> " + specialGraph.get(node));
-        }
-        System.out.println("Total koneksi: " + countTotalConnections());
+        // Reset cache agar digambar ulang
+        backgroundCache = null;
+        repaint();
     }
 
-    // Method untuk menghitung total koneksi
-    private int countTotalConnections() {
-        int total = 0;
-        for (List<Integer> connections : specialGraph.values()) {
-            total += connections.size();
-        }
-        return total / 2; // Karena setiap koneksi dihitung dua kali
+    // Helpers
+    public Point getPos(int i) { if(i<0) i=0; if(i>TOTAL_STEPS) i=TOTAL_STEPS; return path[i]; }
+    public int getScore(int i) { return starScores.getOrDefault(i, 0); }
+    public void takeScore(int i) { starScores.remove(i); }
+    public Set<Integer> getSpecialNodes() { return specialNodes; }
+    public Map<Integer, List<Integer>> getSpecialGraph() { return specialGraph; }
+    public Integer getNearestSpecial(int pos) { return specialNodes.isEmpty() ? null : specialNodes.iterator().next(); }
+    public Integer getRandomSpecial(int pos) {
+        if(specialNodes.isEmpty()) return null;
+        return new ArrayList<>(specialNodes).get(new Random().nextInt(specialNodes.size()));
     }
-
-    // Method untuk mendapatkan node khusus terdekat
-    public Integer getNearestSpecialNode(int position) {
-        int minDistance = Integer.MAX_VALUE;
-        Integer nearestNode = null;
-
-        for (int node : specialNodes) {
-            int distance = Math.abs(node - position);
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearestNode = node;
-            }
-        }
-        return nearestNode;
+    public boolean isPrime(int n) {
+        int[] p = {2,3,5,7,11,13,17,19,23};
+        for(int x:p) if(x==n) return true;
+        return false;
     }
-
-    // Method untuk mendapatkan node khusus terjauh
-    public Integer getFarthestSpecialNode(int position) {
-        int maxDistance = -1;
-        Integer farthestNode = null;
-
-        for (int node : specialNodes) {
-            int distance = Math.abs(node - position);
-            if (distance > maxDistance) {
-                maxDistance = distance;
-                farthestNode = node;
-            }
-        }
-        return farthestNode;
-    }
-
-    // Method untuk mendapatkan node khusus random (bukan posisi saat ini)
-    public Integer getRandomSpecialNode(int currentPosition) {
-        List<Integer> availableNodes = new ArrayList<>(specialNodes);
-        availableNodes.remove(Integer.valueOf(currentPosition)); // Hapus posisi saat ini
-
-        if (availableNodes.isEmpty()) {
-            return null;
-        }
-
-        Random random = new Random();
-        return availableNodes.get(random.nextInt(availableNodes.size()));
-    }
-
-    // Method untuk teleport ke node khusus
-    public void teleportToSpecialNode(Player player, int targetNode) {
-        if (specialNodes.contains(targetNode)) {
-            int oldPosition = player.getPosition();
-            player.setPosition(targetNode);
-
-            if (controlPanel != null) {
-                controlPanel.addGameLog("🚀 " + player.getName() + " TELEPORT ke node khusus! (" + oldPosition + " → " + targetNode + ")");
-            }
-
-            // Animasikan teleport
-            animatePlayerMovement(player, oldPosition, targetNode, () -> {
-                checkSpecialNodeEffects(player, targetNode);
-            });
-        }
-    }
-
-    // Method untuk efek khusus ketika mendarat di node khusus
-    private void checkSpecialNodeEffects(Player player, int nodePosition) {
-        List<Integer> connectedNodes = specialGraph.get(nodePosition);
-
-        if (connectedNodes != null && !connectedNodes.isEmpty() && controlPanel != null) {
-            String message = "📍 " + player.getName() + " di Node Khusus " + nodePosition +
-                    " - Terhubung ke SEMUA node: " + connectedNodes;
-            controlPanel.addGameLog(message);
-
-            // Berikan bonus atau efek khusus
-            giveSpecialNodeBonus(player, nodePosition);
-        }
-    }
-
-    // Method untuk memberikan bonus di node khusus
-    private void giveSpecialNodeBonus(Player player, int nodePosition) {
-        Random random = new Random();
-        int bonusType = random.nextInt(5); // 5 efek berbeda
-
-        if (controlPanel == null) return;
-
-        switch (bonusType) {
-            case 0:
-                // Teleport ke node khusus random lainnya
-                Integer randomNode = getRandomSpecialNode(nodePosition);
-                if (randomNode != null) {
-                    controlPanel.addGameLog("🎯 " + player.getName() + " memilih TELEPORT ke node " + randomNode);
-                    teleportToSpecialNode(player, randomNode);
-                }
-                break;
-
-            case 1:
-                // Bonus extra turn
-                controlPanel.addGameLog("🔄 BONUS: " + player.getName() + " dapat EXTRA TURN!");
-                break;
-
-            case 2:
-                // Bonus protection (tidak bisa dimundurkan 1 turn)
-                controlPanel.addGameLog("🛡️ BONUS: " + player.getName() + " dapat PROTECTION 1 turn!");
-                break;
-
-            case 3:
-                // Bonus roll lagi
-                controlPanel.addGameLog("🎲 BONUS: " + player.getName() + " dapat ROLL LAGI!");
-                break;
-
-            case 4:
-                // Bonus lompat ke node terjauh
-                Integer farthestNode = getFarthestSpecialNode(nodePosition);
-                if (farthestNode != null) {
-                    controlPanel.addGameLog("⚡ BONUS: " + player.getName() + " LOMPAT ke node terjauh " + farthestNode);
-                    teleportToSpecialNode(player, farthestNode);
-                }
-                break;
-        }
-    }
-
-    // Method untuk reset special nodes (dipanggil saat game baru)
-    public void resetSpecialNodes() {
-        generateFullyConnectedSpecialNodes();
-    }
-
-    // Method untuk animate player movement
-    public void animatePlayerMovement(Player player, int startPos, int endPos, Runnable onComplete) {
-        if (animationPanel.isAnimating()) {
-            onComplete.run();
-            return;
-        }
-        animationPanel.animateMovement(player, startPos, endPos, onComplete);
-    }
-
-    public boolean isAnimating() {
-        return animationPanel.isAnimating();
-    }
-
-    public AnimationPanel getAnimationPanel() {
-        return animationPanel;
-    }
+    public void resetSpecialNodes() { generateContent(); }
+    public void animate(Player p, int s, int e, Runnable cb) { animPanel.animateMovement(p, s, e, cb); }
+    public boolean isAnimating() { return animPanel.isAnimating(); }
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        drawBoard(g2d);
-        drawSpecialNodes(g2d); // Gambar node khusus
-        drawSpecialConnections(g2d); // Gambar koneksi khusus
-        drawPlayers(g2d);
-        drawStatus(g2d);
+        // 1. GAMBAR BACKGROUND (Cached)
+        // Jika ukuran berubah atau cache kosong, generate ulang background
+        if (backgroundCache == null || getWidth() != lastWidth || getHeight() != lastHeight) {
+            generateRealisticBackground(getWidth(), getHeight());
+            lastWidth = getWidth();
+            lastHeight = getHeight();
+        }
+        g2.drawImage(backgroundCache, 0, 0, null);
+
+        // 2. GAMBAR TEROWONGAN (TUNNELS)
+        drawTunnels(g2);
+
+        // 3. GAMBAR RUANGAN (NODES)
+        drawNodes(g2);
+
+        // 4. GAMBAR PEMAIN
+        drawPlayers(g2);
+
+        // 5. STATUS BAR
+        drawStatusBar(g2);
     }
 
-    // Method untuk menggambar papan
-    private void drawBoard(Graphics2D g2d) {
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                int position = calculatePosition(row, col);
-                Point point = squarePositions.get(position);
+    // --- PROCEDURAL GENERATION ENGINE ---
+    private void generateRealisticBackground(int w, int h) {
+        backgroundCache = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = backgroundCache.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-                Color squareColor;
-                if (position == 1) {
-                    squareColor = new Color(144, 238, 144); // Hijau muda untuk START
-                } else if (position == 100) {
-                    squareColor = new Color(255, 182, 193); // Pink untuk FINISH
-                } else if (isPrimeNumber(position)) {
-                    squareColor = new Color(255, 200, 200); // Merah muda untuk angka prima
-                } else {
-                    squareColor = (row + col) % 2 == 0 ?
-                            new Color(200, 230, 255) : new Color(150, 200, 255);
-                }
+        int surfaceY = 110;
 
-                g2d.setColor(squareColor);
-                g2d.fillRect(point.x, point.y, SQUARE_SIZE, SQUARE_SIZE);
+        // A. LANGIT (Realistic Sky Gradient)
+        GradientPaint sky = new GradientPaint(0, 0, new Color(70, 130, 180), 0, surfaceY, new Color(173, 216, 230));
+        g2.setPaint(sky);
+        g2.fillRect(0, 0, w, surfaceY);
 
-                g2d.setColor(Color.BLACK);
-                g2d.drawRect(point.x, point.y, SQUARE_SIZE, SQUARE_SIZE);
+        // B. MATAHARI (Glowing Radial)
+        Point sunPos = new Point(w - 80, 50);
+        float[] dist = {0.0f, 0.4f, 1.0f};
+        Color[] colors = {new Color(255, 255, 200), new Color(255, 215, 0, 100), new Color(255, 215, 0, 0)};
+        RadialGradientPaint sunGlow = new RadialGradientPaint(sunPos, 60, dist, colors);
+        g2.setPaint(sunGlow);
+        g2.fillOval(sunPos.x - 60, sunPos.y - 60, 120, 120);
+        g2.setColor(Color.WHITE);
+        g2.fillOval(sunPos.x - 15, sunPos.y - 15, 30, 30); // Inti matahari
 
-                g2d.setColor(Color.BLACK);
-                g2d.setFont(new Font("Arial", Font.BOLD, 12));
-                String number;
-                if (position == 1) {
-                    number = "START";
-                } else if (position == 100) {
-                    number = "FINISH";
-                } else {
-                    number = String.valueOf(position);
-                }
+        // C. AWAN (Fluffy Clouds with Alpha)
+        drawRealisticCloud(g2, 50, 40, 60);
+        drawRealisticCloud(g2, 200, 20, 80);
+        drawRealisticCloud(g2, 450, 60, 50);
 
-                FontMetrics fm = g2d.getFontMetrics();
-                int textWidth = fm.stringWidth(number);
-                int textX = point.x + (SQUARE_SIZE - textWidth) / 2;
-                int textY = point.y + 20;
+        // D. TANAH (Detailed Soil Gradient & Strata)
+        GradientPaint soilBase = new GradientPaint(0, surfaceY, new Color(101, 67, 33), 0, h, new Color(45, 30, 15));
+        g2.setPaint(soilBase);
+        g2.fillRect(0, surfaceY, w, h - surfaceY);
 
-                g2d.drawString(number, textX, textY);
+        // Lapisan Strata (Garis-garis horizontal samar)
+        g2.setColor(new Color(0, 0, 0, 20));
+        for (int i = surfaceY; i < h; i += 40) {
+            g2.fillRect(0, i, w, 15);
+        }
 
-                // Tanda khusus untuk angka prima
-                if (isPrimeNumber(position) && position != 1) {
-                    g2d.setColor(Color.RED);
-                    g2d.setFont(new Font("Arial", Font.BOLD, 16));
-                    g2d.drawString("P", point.x + 5, point.y + 40);
-                }
+        // E. TEKSTUR TANAH (Noise - Ribuan titik)
+        Random rnd = new Random();
+        for (int i = 0; i < 5000; i++) {
+            int tx = rnd.nextInt(w);
+            int ty = rnd.nextInt(h - surfaceY) + surfaceY;
+            // Variasi warna butiran tanah
+            int tone = rnd.nextInt(3);
+            if (tone == 0) g2.setColor(new Color(139, 69, 19, 100)); // Darker
+            else if (tone == 1) g2.setColor(new Color(210, 180, 140, 80)); // Lighter
+            else g2.setColor(new Color(60, 40, 20, 100)); // Stone color
+            g2.fillOval(tx, ty, 3, 3);
+        }
+
+        // F. BATU & AKAR (Dekorasi)
+        g2.setColor(new Color(80, 70, 60));
+        for (Point p : rocks) {
+            g2.fillOval(p.x, p.y, rnd.nextInt(15) + 15, rnd.nextInt(10) + 10);
+        }
+        g2.setColor(new Color(90, 60, 30));
+        g2.setStroke(new BasicStroke(2));
+        for (Point p : roots) {
+            int len = rnd.nextInt(40) + 20;
+            g2.drawArc(p.x, surfaceY, 20, len, 180, 180); // Akar menggantung
+        }
+
+        // G. RUMPUT REALISTIS (Blade by Blade)
+        for (int x = 0; x < w; x += 2) {
+            int grassH = rnd.nextInt(15) + 5;
+            // Variasi warna hijau
+            int gVal = rnd.nextInt(50) + 100;
+            g2.setColor(new Color(34, gVal, 34));
+            g2.drawLine(x, surfaceY, x, surfaceY - grassH);
+        }
+
+        g2.dispose();
+    }
+
+    // Helper menggambar awan yang lembut
+    private void drawRealisticCloud(Graphics2D g, int x, int y, int size) {
+        g.setColor(new Color(255, 255, 255, 180));
+        g.fillOval(x, y, size, size);
+        g.fillOval(x + size / 2, y - size / 4, size, size);
+        g.fillOval(x + size, y, size, size);
+        g.fillOval(x + size / 2, y + size / 4, size, size);
+    }
+
+    private void drawTunnels(Graphics2D g2) {
+        // Outline Terowongan (Gelap)
+        g2.setStroke(new BasicStroke(14, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(30, 15, 5));
+        for(int i=0; i<TOTAL_STEPS; i++) g2.drawLine(path[i].x, path[i].y, path[i+1].x, path[i+1].y);
+
+        // Isi Terowongan (Terang - Efek 3D)
+        g2.setStroke(new BasicStroke(10, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(160, 110, 80));
+        for(int i=0; i<TOTAL_STEPS; i++) g2.drawLine(path[i].x, path[i].y, path[i+1].x, path[i+1].y);
+
+        g2.setStroke(new BasicStroke(1));
+    }
+
+    private void drawNodes(Graphics2D g2) {
+        for(int i=0; i<=TOTAL_STEPS; i++) {
+            Point p = path[i];
+
+            // Efek 3D Sphere untuk Node
+            int r = 26;
+            Color baseColor;
+            if (i == 0) baseColor = Color.GREEN;
+            else if (i == TOTAL_STEPS) baseColor = Color.RED;
+            else if (specialNodes.contains(i)) baseColor = new Color(148, 0, 211);
+            else baseColor = new Color(220, 190, 150);
+
+            // Radial Gradient untuk efek bola
+            Point center = new Point(p.x - 5, p.y - 5);
+            float[] dist = {0.0f, 1.0f};
+            Color[] colors = {baseColor.brighter(), baseColor.darker()};
+            RadialGradientPaint sphere = new RadialGradientPaint(center, r, dist, colors);
+            g2.setPaint(sphere);
+            g2.fillOval(p.x - r/2, p.y - r/2, r, r);
+
+            // Border
+            g2.setColor(new Color(50, 30, 10));
+            g2.drawOval(p.x - r/2, p.y - r/2, r, r);
+
+            // Text
+            g2.setColor(i==TOTAL_STEPS || specialNodes.contains(i) ? Color.WHITE : Color.BLACK);
+            g2.setFont(new Font("Arial", Font.BOLD, 10));
+            String lbl = (i==0)?"S":(i==TOTAL_STEPS)?"F":String.valueOf(i);
+            int tw = g2.getFontMetrics().stringWidth(lbl);
+            g2.drawString(lbl, p.x - tw/2, p.y + 4);
+
+            // Star / Gem
+            if(starScores.containsKey(i)) {
+                drawStarShape(g2, p.x+10, p.y-12, 6, Color.CYAN);
             }
         }
     }
 
-    // Method untuk menggambar node khusus (kotak hijau)
-    private void drawSpecialNodes(Graphics2D g2d) {
-        for (int node : specialNodes) {
-            Point point = squarePositions.get(node);
-            if (point != null) {
-                // Gambar kotak hijau dengan border
-                g2d.setColor(new Color(0, 200, 0, 180)); // Hijau lebih terang
-                g2d.fillRect(point.x + 3, point.y + 3, SQUARE_SIZE - 6, SQUARE_SIZE - 6);
+    private void drawStarShape(Graphics2D g, int x, int y, int size, Color c) {
+        int[] xP = new int[10];
+        int[] yP = new int[10];
+        double angle = Math.PI / 2; // Mulai dari atas
+        for(int i=0; i<10; i++) {
+            int rad = (i%2==0) ? size : size/2;
+            xP[i] = x + (int)(Math.cos(angle) * rad);
+            yP[i] = y - (int)(Math.sin(angle) * rad);
+            angle += Math.PI / 5;
+        }
+        g.setColor(c);
+        g.fillPolygon(xP, yP, 10);
+        g.setColor(Color.WHITE);
+        g.drawPolygon(xP, yP, 10);
+    }
 
-                g2d.setColor(new Color(0, 100, 0)); // Hijau tua untuk border
-                g2d.setStroke(new BasicStroke(3));
-                g2d.drawRect(point.x + 3, point.y + 3, SQUARE_SIZE - 6, SQUARE_SIZE - 6);
+    private void drawPlayers(Graphics2D g2) {
+        if(players != null) {
+            for(Player p : players) {
+                Point loc = getPos(p.getPosition());
+                int offX = (p.getPlayerNumber() % 2 == 0) ? -6 : 6;
+                int offY = (p.getPlayerNumber() > 1) ? -6 : 6;
 
-                // Reset stroke
-                g2d.setStroke(new BasicStroke(1));
+                // Semut dengan badan terpisah (Head, Thorax, Abdomen)
+                g2.setColor(p.getColor());
+                // Abdomen (Belakang)
+                g2.fillOval(loc.x + offX - 8, loc.y + offY - 5, 8, 8);
+                // Thorax (Tengah)
+                g2.fillOval(loc.x + offX - 4, loc.y + offY - 4, 6, 6);
+                // Head (Depan)
+                g2.fillOval(loc.x + offX, loc.y + offY - 6, 7, 7);
 
-                // Tanda khusus (bintang)
-                g2d.setColor(Color.YELLOW);
-                g2d.setFont(new Font("Arial", Font.BOLD, 18));
-                String star = "★";
-                FontMetrics fm = g2d.getFontMetrics();
-                int starWidth = fm.stringWidth(star);
-                g2d.drawString(star, point.x + (SQUARE_SIZE - starWidth)/2, point.y + SQUARE_SIZE/2 + 6);
-
-                // Tulis nomor node kecil di bawah bintang
-                g2d.setColor(Color.WHITE);
-                g2d.setFont(new Font("Arial", Font.BOLD, 10));
-                String nodeText = String.valueOf(node);
-                int textWidth = g2d.getFontMetrics().stringWidth(nodeText);
-                g2d.drawString(nodeText, point.x + (SQUARE_SIZE - textWidth)/2, point.y + SQUARE_SIZE - 8);
+                // Mata Putih
+                g2.setColor(Color.WHITE);
+                g2.fillOval(loc.x + offX + 2, loc.y + offY - 5, 2, 2);
             }
         }
     }
 
-    // Method untuk menggambar koneksi antara node khusus (FULLY CONNECTED)
-    private void drawSpecialConnections(Graphics2D g2d) {
-        g2d.setColor(new Color(0, 150, 0, 120)); // Hijau transparan
-        g2d.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-
-        List<Integer> nodeList = new ArrayList<>(specialNodes);
-        Collections.sort(nodeList);
-
-        // Gambar garis untuk setiap pasangan node (FULLY CONNECTED)
-        for (int i = 0; i < nodeList.size(); i++) {
-            int fromNode = nodeList.get(i);
-            Point fromPoint = squarePositions.get(fromNode);
-            if (fromPoint != null) {
-                for (int j = i + 1; j < nodeList.size(); j++) {
-                    int toNode = nodeList.get(j);
-                    Point toPoint = squarePositions.get(toNode);
-                    if (toPoint != null) {
-                        int fromX = fromPoint.x + SQUARE_SIZE/2;
-                        int fromY = fromPoint.y + SQUARE_SIZE/2;
-                        int toX = toPoint.x + SQUARE_SIZE/2;
-                        int toY = toPoint.y + SQUARE_SIZE/2;
-
-                        g2d.drawLine(fromX, fromY, toX, toY);
-                    }
-                }
-            }
-        }
-
-        // Reset stroke
-        g2d.setStroke(new BasicStroke(1));
-    }
-
-    // Method untuk menggambar pemain
-    private void drawPlayers(Graphics2D g2d) {
-        if (players == null) return;
-
-        for (Player player : players) {
-            if (player != null && player.getPosition() > 0) {
-                Point position = squarePositions.get(player.getPosition());
-                if (position != null) {
-                    drawPlayerToken(g2d, player, position);
-                }
-            }
-        }
-    }
-
-    private void drawPlayerToken(Graphics2D g2d, Player player, Point position) {
-        int playerNum = player.getPlayerNumber();
-        int offsetX = (playerNum % 2) * 20 + 5;
-        int offsetY = (playerNum / 2) * 20 + 25;
-
-        g2d.setColor(player.getColor().darker());
-        g2d.fillOval(position.x + offsetX + 2, position.y + offsetY + 2, 20, 20);
-
-        g2d.setColor(player.getColor());
-        g2d.fillOval(position.x + offsetX, position.y + offsetY, 20, 20);
-
-        g2d.setColor(Color.BLACK);
-        g2d.drawOval(position.x + offsetX, position.y + offsetY, 20, 20);
-
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Arial", Font.BOLD, 10));
-        g2d.drawString(String.valueOf(playerNum + 1),
-                position.x + offsetX + 7, position.y + offsetY + 13);
-    }
-
-    // Method untuk menggambar status
-    private void drawStatus(Graphics2D g2d) {
-        int statusY = BOARD_SIZE * SQUARE_SIZE + 50;
-
-        g2d.setColor(Color.BLACK);
-        g2d.setFont(new Font("Arial", Font.BOLD, 14));
-        g2d.drawString(statusMessage, 20, statusY);
-
-        if (animationPanel.isAnimating()) {
-            g2d.setColor(Color.RED);
-            g2d.setFont(new Font("Arial", Font.BOLD, 12));
-            g2d.drawString("• Animasi berjalan", 250, statusY);
-        }
-    }
-
-    public Point getSquarePosition(int position) {
-        return squarePositions.get(position);
-    }
-
-    public void setPlayers(Player[] players) {
-        this.players = players;
-    }
-
-    public void setStatusMessage(String message) {
-        this.statusMessage = message;
-    }
-
-    public void printBoardLayout() {
-        System.out.println("=== BOARD LAYOUT ===");
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                int pos = calculatePosition(row, col);
-                System.out.print(String.format("%3d ", pos));
-            }
-            System.out.println();
-        }
-        System.out.println("START: 1 (bawah kiri)");
-        System.out.println("FINISH: 100 (atas kanan)");
-    }
-
-    public void printGraph() {
-        System.out.println("=== GRAPH REPRESENTATION ===");
-        for (int i = 1; i <= 100; i++) {
-            List<Integer> moves = graph.get(i);
-            System.out.println("Position " + i + " -> " + moves);
-        }
-    }
-
-    public void printSpecialNodes() {
-        System.out.println("=== FULLY CONNECTED SPECIAL NODES ===");
-        List<Integer> nodeList = new ArrayList<>(specialNodes);
-        Collections.sort(nodeList);
-
-        for (int node : nodeList) {
-            List<Integer> connections = new ArrayList<>(specialGraph.get(node));
-            Collections.sort(connections);
-            System.out.println("Node " + node + " -> " + connections);
-        }
-        System.out.println("Total nodes: " + specialNodes.size());
-        System.out.println("Total koneksi: " + countTotalConnections() + " (fully connected)");
-        System.out.println("Node positions: " + nodeList);
-    }
-
-    // Getter untuk special nodes
-    public Set<Integer> getSpecialNodes() {
-        return specialNodes;
-    }
-
-    public Map<Integer, List<Integer>> getSpecialGraph() {
-        return specialGraph;
-    }
-
-    // Method untuk mendapatkan info special nodes sebagai string
-    public String getSpecialNodesInfo() {
-        List<Integer> nodeList = new ArrayList<>(specialNodes);
-        Collections.sort(nodeList);
-        return "Node Khusus: " + nodeList + " (FULLY CONNECTED)";
-    }
-
-    // Method untuk menambahkan tangga
-    public void addLadder(int from, int to) {
-        if (from < to && from >= 1 && to <= 100) {
-            graph.get(from).add(to);
-        }
-    }
-
-    // Method untuk menambahkan ular
-    public void addSnake(int from, int to) {
-        if (from > to && from >= 1 && to <= 100) {
-            graph.get(from).add(to);
-        }
-    }
-
-    public List<Integer> getPossibleMoves(int position) {
-        return graph.getOrDefault(position, new ArrayList<>());
-    }
-
-    public boolean isValidMove(int from, int to) {
-        return graph.get(from).contains(to);
+    private void drawStatusBar(Graphics2D g2) {
+        // Kotak status transparan semi-modern
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRoundRect(10, 10, 320, 35, 15, 15);
+        g2.setColor(new Color(255, 215, 0)); // Gold text
+        g2.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        g2.drawString(statusMsg, 25, 33);
     }
 }

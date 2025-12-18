@@ -1,257 +1,255 @@
 import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 import java.awt.*;
-import java.awt.event.ActionListener;
-import java.util.Hashtable;
+import java.util.Arrays;
 
 public class ControlPanel extends JPanel {
-    private JButton rollButton;
-    private JLabel diceResultLabel;
-    private JLabel currentPlayerLabel;
-    private JTextArea gameLog;
-    private JPanel playersInfoPanel;
-    private Player[] players;
-    private JLabel speedLabel;
-    private JSlider speedSlider;
-    private JButton resetSpeedButton;
+    // --- PALET WARNA TEMA SEMUT ---
+    private static final Color BG_SKY_TOP = new Color(135, 206, 235);   // Langit
+    private static final Color BG_SOIL_BOT = new Color(101, 67, 33);    // Tanah
+    private static final Color WOOD_PANEL = new Color(139, 69, 19);     // Kayu/Tanah Gelap
+    private static final Color PAPER_BG = new Color(245, 222, 179);     // Warna Kertas/Pasir
+    private static final Color TEXT_DARK = new Color(50, 30, 10);       // Teks Coklat Tua
+    private static final Color ACCENT_GREEN = new Color(34, 139, 34);   // Hijau Daun
+
+    private VisualDice dice;
+    private JLabel lblPlayer, lblDiceStatus;
+    private JTextArea txtLog;
+    private JPanel pnlRankContent; // Panel isi ranking
 
     public ControlPanel() {
         setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(350, 650));
-        setBackground(new Color(250, 250, 250));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        setPreferredSize(new Dimension(340, 600)); // Lebar sedikit ditambah
+        setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        initializeComponents();
+        initializeUI();
     }
 
-    private void initializeComponents() {
-        // Panel atas untuk informasi pemain
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.setBackground(new Color(220, 220, 220));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    // Custom Background Gradient (Langit ke Tanah)
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        currentPlayerLabel = new JLabel("Pemain Saat Ini: -");
-        currentPlayerLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        currentPlayerLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        diceResultLabel = new JLabel("Dadu: -");
-        diceResultLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-        diceResultLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        topPanel.add(currentPlayerLabel, BorderLayout.NORTH);
-        topPanel.add(diceResultLabel, BorderLayout.CENTER);
-
-        // Panel info pemain
-        playersInfoPanel = new JPanel();
-        playersInfoPanel.setLayout(new GridLayout(4, 1, 5, 5));
-        playersInfoPanel.setBorder(BorderFactory.createTitledBorder("Info Pemain"));
-        playersInfoPanel.setPreferredSize(new Dimension(300, 120));
-        updatePlayersInfo();
-
-        // Panel kontrol kecepatan animasi dengan slider
-        JPanel speedControlPanel = createSpeedControlPanel();
-
-        // Tombol roll dice
-        rollButton = new JButton("🎲 Lempar Dadu 🎲");
-        rollButton.setFont(new Font("Arial", Font.BOLD, 16));
-        rollButton.setBackground(new Color(100, 150, 255));
-        rollButton.setForeground(Color.WHITE);
-        rollButton.setFocusPainted(false);
-        rollButton.setBorder(BorderFactory.createRaisedBevelBorder());
-
-        JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(new Color(250, 250, 250));
-        buttonPanel.add(rollButton);
-
-        // Area log game
-        gameLog = new JTextArea(12, 25);
-        gameLog.setEditable(false);
-        gameLog.setFont(new Font("Consolas", Font.PLAIN, 12));
-        gameLog.setBackground(new Color(240, 240, 240));
-        gameLog.setBorder(BorderFactory.createTitledBorder("Log Permainan"));
-        JScrollPane scrollPane = new JScrollPane(gameLog);
-
-        // Panel tengah gabungan
-        JPanel centerPanel = new JPanel();
-        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
-        centerPanel.setBackground(new Color(250, 250, 250));
-
-        // Tambahkan komponen dengan spacing yang tepat
-        centerPanel.add(playersInfoPanel);
-        centerPanel.add(Box.createRigidArea(new Dimension(0, 10))); // Spacer
-        centerPanel.add(speedControlPanel);
-        centerPanel.add(Box.createRigidArea(new Dimension(0, 10))); // Spacer
-        centerPanel.add(buttonPanel);
-
-        add(topPanel, BorderLayout.NORTH);
-        add(centerPanel, BorderLayout.CENTER);
-        add(scrollPane, BorderLayout.SOUTH);
+        // Gradasi menyatu dengan BoardPanel
+        GradientPaint gp = new GradientPaint(0, 0, BG_SKY_TOP, 0, getHeight(), BG_SOIL_BOT);
+        g2.setPaint(gp);
+        g2.fillRect(0, 0, getWidth(), getHeight());
     }
 
-    private JPanel createSpeedControlPanel() {
-        JPanel speedPanel = new JPanel();
-        speedPanel.setLayout(new BoxLayout(speedPanel, BoxLayout.Y_AXIS));
-        speedPanel.setBorder(BorderFactory.createTitledBorder("Kontrol Kecepatan Animasi"));
-        speedPanel.setBackground(new Color(240, 240, 240));
-        speedPanel.setPreferredSize(new Dimension(300, 140));
-        speedPanel.setMaximumSize(new Dimension(300, 140));
+    private void initializeUI() {
+        // --- 1. HEADER (Info Pemain) ---
+        JPanel pnlHeader = new TransparentPanel(new BorderLayout());
+        pnlHeader.setBorder(new EmptyBorder(0, 0, 15, 0));
 
-        // Label kecepatan
-        speedLabel = new JLabel("Kecepatan: Normal (100ms)", SwingConstants.CENTER);
-        speedLabel.setFont(new Font("Arial", Font.BOLD, 12));
-        speedLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        // Slider untuk kecepatan
-        speedSlider = new JSlider(JSlider.HORIZONTAL, 20, 500, 100);
-        speedSlider.setMajorTickSpacing(100);
-        speedSlider.setMinorTickSpacing(20);
-        speedSlider.setPaintTicks(true);
-        speedSlider.setPaintLabels(true);
-        speedSlider.setSnapToTicks(false);
-
-        // Custom label untuk slider
-        Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
-        labelTable.put(20, new JLabel("Sangat Cepat"));
-        labelTable.put(100, new JLabel("Normal"));
-        labelTable.put(500, new JLabel("Sangat Lambat"));
-        speedSlider.setLabelTable(labelTable);
-
-        speedSlider.setFont(new Font("Arial", Font.PLAIN, 9));
-        speedSlider.setBackground(new Color(240, 240, 240));
-        speedSlider.setAlignmentX(Component.CENTER_ALIGNMENT);
-        speedSlider.setMaximumSize(new Dimension(280, 60));
-
-        // Panel untuk slider
-        JPanel sliderPanel = new JPanel();
-        sliderPanel.setLayout(new BoxLayout(sliderPanel, BoxLayout.Y_AXIS));
-        sliderPanel.setBackground(new Color(240, 240, 240));
-        sliderPanel.add(speedLabel);
-        sliderPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Spacer
-        sliderPanel.add(speedSlider);
-
-        // Tombol reset
-        resetSpeedButton = new JButton("🔄 Reset Kecepatan");
-        resetSpeedButton.setFont(new Font("Arial", Font.BOLD, 11));
-        resetSpeedButton.setBackground(new Color(200, 200, 255));
-        resetSpeedButton.setForeground(Color.BLACK);
-        resetSpeedButton.setFocusPainted(false);
-        resetSpeedButton.setBorder(BorderFactory.createRaisedBevelBorder());
-        resetSpeedButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.setBackground(new Color(240, 240, 240));
-        buttonPanel.setLayout(new FlowLayout());
-        buttonPanel.add(resetSpeedButton);
-
-        speedPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Spacer atas
-        speedPanel.add(sliderPanel);
-        speedPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Spacer
-        speedPanel.add(buttonPanel);
-
-        return speedPanel;
-    }
-
-    public void setSpeedControlListeners(ChangeListener sliderListener,
-                                         ActionListener resetSpeedListener) {
-        speedSlider.addChangeListener(sliderListener);
-        resetSpeedButton.addActionListener(resetSpeedListener);
-    }
-
-    public void updateSpeedLabel(String speedText) {
-        speedLabel.setText("Kecepatan: " + speedText);
-    }
-
-    public void setSpeedValue(int speed) {
-        speedSlider.setValue(speed);
-    }
-
-    public int getSpeedValue() {
-        return speedSlider.getValue();
-    }
-
-    public void setPlayers(Player[] players) {
-        this.players = players;
-        updatePlayersInfo();
-    }
-
-    private void updatePlayersInfo() {
-        playersInfoPanel.removeAll();
-
-        if (players != null) {
-            for (Player player : players) {
-                if (player != null) {
-                    JPanel playerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-                    playerPanel.setBackground(new Color(240, 240, 240));
-                    playerPanel.setPreferredSize(new Dimension(280, 25));
-
-                    // Color indicator
-                    JLabel colorLabel = new JLabel("●");
-                    colorLabel.setForeground(player.getColor());
-                    colorLabel.setFont(new Font("Arial", Font.BOLD, 16));
-
-                    // Player info
-                    JLabel infoLabel = new JLabel(player.getName() + ": Posisi " + player.getPosition());
-                    infoLabel.setFont(new Font("Arial", Font.PLAIN, 12));
-
-                    playerPanel.add(colorLabel);
-                    playerPanel.add(infoLabel);
-                    playersInfoPanel.add(playerPanel);
-                }
+        lblPlayer = new JLabel("Menunggu Semut...", SwingConstants.CENTER);
+        lblPlayer.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblPlayer.setForeground(Color.WHITE);
+        // Efek Shadow pada teks
+        lblPlayer.setUI(new javax.swing.plaf.basic.BasicLabelUI() {
+            public void paint(Graphics g, JComponent c) {
+                ((Graphics2D)g).setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                g.setColor(new Color(0,0,0,100));
+                g.drawString(lblPlayer.getText(), 2, lblPlayer.getHeight()-4); // Shadow
+                super.paint(g, c);
             }
-        } else {
-            JLabel noPlayersLabel = new JLabel("Belum ada pemain");
-            noPlayersLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            playersInfoPanel.add(noPlayersLabel);
-        }
+        });
 
-        playersInfoPanel.revalidate();
-        playersInfoPanel.repaint();
+        pnlHeader.add(lblPlayer, BorderLayout.CENTER);
+
+        // --- 2. CENTER AREA (Ranking & Dice) ---
+        JPanel pnlCenter = new TransparentPanel();
+        pnlCenter.setLayout(new BoxLayout(pnlCenter, BoxLayout.Y_AXIS));
+
+        // A. RANKING PANEL (Style Kayu/Batu)
+        JPanel pnlRankContainer = new RoundedPanel(15, WOOD_PANEL);
+        pnlRankContainer.setLayout(new BorderLayout());
+        pnlRankContainer.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        JLabel lblRankTitle = new JLabel("🏆 LEADERBOARD", SwingConstants.CENTER);
+        lblRankTitle.setFont(new Font("Arial", Font.BOLD, 14));
+        lblRankTitle.setForeground(Color.ORANGE);
+        pnlRankContainer.add(lblRankTitle, BorderLayout.NORTH);
+
+        pnlRankContent = new TransparentPanel();
+        pnlRankContent.setLayout(new BoxLayout(pnlRankContent, BoxLayout.Y_AXIS));
+        pnlRankContainer.add(pnlRankContent, BorderLayout.CENTER);
+
+        // B. DICE PANEL (Area Dadu)
+        JPanel pnlDiceArea = new TransparentPanel(new BorderLayout());
+        pnlDiceArea.setBorder(new EmptyBorder(20, 0, 10, 0));
+
+        // Wrapper agar dadu di tengah dengan background lingkaran
+        JPanel diceWrapper = new JPanel(new GridBagLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                // Gambar lingkaran cahaya di belakang dadu
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(255, 255, 255, 50));
+                g2.fillOval(getWidth()/2 - 60, getHeight()/2 - 60, 120, 120);
+            }
+        };
+        diceWrapper.setOpaque(false);
+
+        dice = new VisualDice(); // Dadu Visual
+        diceWrapper.add(dice);
+
+        lblDiceStatus = new JLabel("Giliranmu!", SwingConstants.CENTER);
+        lblDiceStatus.setFont(new Font("Arial", Font.BOLD, 16));
+        lblDiceStatus.setForeground(Color.WHITE);
+        lblDiceStatus.setBorder(new EmptyBorder(10,0,0,0));
+
+        pnlDiceArea.add(diceWrapper, BorderLayout.CENTER);
+        pnlDiceArea.add(lblDiceStatus, BorderLayout.SOUTH);
+
+        pnlCenter.add(pnlRankContainer);
+        pnlCenter.add(pnlDiceArea);
+
+        // --- 3. FOOTER (Log Jurnal) ---
+        JPanel pnlLog = new RoundedPanel(15, PAPER_BG);
+        pnlLog.setLayout(new BorderLayout());
+        pnlLog.setBorder(new EmptyBorder(5, 5, 5, 5));
+        pnlLog.setPreferredSize(new Dimension(300, 180)); // Tinggi fix agar layout rapi
+
+        JLabel lblLogTitle = new JLabel("📜 Catatan Ekspedisi", SwingConstants.LEFT);
+        lblLogTitle.setFont(new Font("SansSerif", Font.BOLD, 12));
+        lblLogTitle.setForeground(TEXT_DARK);
+        lblLogTitle.setBorder(new EmptyBorder(5, 5, 5, 5));
+
+        txtLog = new JTextArea();
+        txtLog.setEditable(false);
+        txtLog.setFont(new Font("Monospaced", Font.BOLD, 12));
+        txtLog.setForeground(TEXT_DARK);
+        txtLog.setBackground(PAPER_BG);
+        txtLog.setLineWrap(true);
+        txtLog.setWrapStyleWord(true);
+
+        JScrollPane scrollLog = new JScrollPane(txtLog);
+        scrollLog.setBorder(null);
+        scrollLog.setOpaque(false);
+        scrollLog.getViewport().setOpaque(false);
+
+        // Custom Scrollbar agar menyatu
+        scrollLog.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
+            protected void configureScrollBarColors() {
+                this.thumbColor = new Color(139, 69, 19, 100);
+            }
+        });
+
+        pnlLog.add(lblLogTitle, BorderLayout.NORTH);
+        pnlLog.add(scrollLog, BorderLayout.CENTER);
+
+        // Menyusun Layout Utama
+        add(pnlHeader, BorderLayout.NORTH);
+        add(pnlCenter, BorderLayout.CENTER);
+        add(pnlLog, BorderLayout.SOUTH);
     }
 
-    public void setRollButtonListener(ActionListener listener) {
-        rollButton.addActionListener(listener);
+    // --- PUBLIC METHODS (API untuk SnakeLadderGame) ---
+
+    public VisualDice getVisualDice() { return dice; }
+
+    public void setPlayers(Player[] p) {} // Placeholder
+
+    public void setCurPlayer(String text) {
+        lblPlayer.setText(text);
     }
 
-    public void setCurrentPlayer(String playerInfo) {
-        currentPlayerLabel.setText("Pemain Saat Ini: " + playerInfo);
-        updatePlayersInfo();
+    public void setStatus(String text, Color c) {
+        lblDiceStatus.setText(text);
+        lblDiceStatus.setForeground(c);
     }
 
-    public void setDiceResult(int number, boolean isGreen) {
-        String color = isGreen ? "Hijau" : "Merah";
-        String colorCode = isGreen ? "#00AA00" : "#FF0000";
-        String multipleInfo = (number % 5 == 0) ? " 🎯 DOUBLE TURN!" : "";
-
-        diceResultLabel.setText(String.format(
-                "<html>Dadu: <b style='font-size:16px'>%d</b> - <font color='%s'><b>%s</b></font>%s</html>",
-                number, colorCode, color, multipleInfo
-        ));
-    }
-
-    public void addGameLog(String message) {
-        gameLog.append(message + "\n");
-        gameLog.setCaretPosition(gameLog.getDocument().getLength());
-    }
-
-    public void enableRollButton(boolean enable) {
-        rollButton.setEnabled(enable);
+    public void enableDice(boolean enable) {
+        dice.setInteractionEnabled(enable);
         if (enable) {
-            rollButton.setBackground(new Color(100, 150, 255));
-            rollButton.setText("🎲 Lempar Dadu 🎲");
-        } else {
-            rollButton.setBackground(Color.GRAY);
-            rollButton.setText("Mengocok...");
+            setStatus("KLIK DADU!", Color.YELLOW);
         }
     }
 
-    public void updatePlayerPositions() {
-        updatePlayersInfo();
+    public void clearLog() {
+        txtLog.setText("");
     }
 
-    // HAPUS method setSpeedControlsEnabled - biarkan slider selalu aktif
-    // public void setSpeedControlsEnabled(boolean enabled) {
-    //     speedSlider.setEnabled(enabled);
-    //     resetSpeedButton.setEnabled(enabled);
-    // }
+    public void addLog(String text) {
+        txtLog.append("• " + text + "\n");
+        txtLog.setCaretPosition(txtLog.getDocument().getLength());
+    }
+
+    public void updateRank(Player[] players) {
+        pnlRankContent.removeAll();
+        if (players != null) {
+            Player[] sorted = players.clone();
+            Arrays.sort(sorted); // Sort berdasarkan Score
+
+            for (int i = 0; i < sorted.length; i++) {
+                Player p = sorted[i];
+
+                // Panel Baris Ranking
+                JPanel row = new TransparentPanel(new BorderLayout());
+                row.setBorder(new EmptyBorder(5, 5, 5, 5));
+
+                // Ikon Semut & Nama
+                JLabel lblName = new JLabel((i + 1) + ". 🐜 " + p.getName());
+                lblName.setFont(new Font("Arial", Font.BOLD, 12));
+
+                // Warna Emas/Perak/Perunggu untuk Top 3
+                if (i == 0) lblName.setForeground(new Color(255, 215, 0)); // Gold
+                else if (i == 1) lblName.setForeground(new Color(224, 224, 224)); // Silver
+                else if (i == 2) lblName.setForeground(new Color(205, 127, 50)); // Bronze
+                else lblName.setForeground(Color.WHITE);
+
+                // Info Skor & Posisi
+                JLabel lblInfo = new JLabel("<html><font color='#FFA500'>⭐" + p.getScore() + "</font> <font color='#AAAAAA'>| Pos:" + p.getPosition() + "</font></html>");
+                lblInfo.setFont(new Font("Arial", Font.PLAIN, 11));
+
+                row.add(lblName, BorderLayout.CENTER);
+                row.add(lblInfo, BorderLayout.EAST);
+
+                // Garis pemisah tipis
+                if (i < sorted.length - 1) {
+                    row.setBorder(BorderFactory.createCompoundBorder(
+                            new EmptyBorder(2,0,2,0),
+                            BorderFactory.createMatteBorder(0,0,1,0, new Color(255,255,255,50))
+                    ));
+                }
+
+                pnlRankContent.add(row);
+            }
+        }
+        pnlRankContent.revalidate();
+        pnlRankContent.repaint();
+    }
+
+    // --- HELPER CLASSES (Inner Classes untuk styling) ---
+
+    // Panel yang benar-benar transparan
+    private static class TransparentPanel extends JPanel {
+        public TransparentPanel(LayoutManager layout) { super(layout); setOpaque(false); }
+        public TransparentPanel() { setOpaque(false); }
+    }
+
+    // Panel dengan sudut membulat dan warna solid
+    private static class RoundedPanel extends JPanel {
+        private int radius;
+        private Color bgColor;
+
+        public RoundedPanel(int radius, Color bgColor) {
+            this.radius = radius;
+            this.bgColor = bgColor;
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(bgColor);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
+        }
+    }
 }
